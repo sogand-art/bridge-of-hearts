@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { Heart, User, Mail, Lock, ArrowRight, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
-
+import { Heart, User, Mail, Lock, ArrowRight, CheckCircle2, AlertCircle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+ 
 export default function LoginPage() {
   const [selectedRole, setSelectedRole] = useState<'donor' | 'needy'>('donor');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
@@ -197,13 +198,22 @@ export default function LoginPage() {
               <div className={inputWrap}>
                 <Lock className="w-4 h-4 text-slate-400" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full bg-transparent outline-none text-slate-900 placeholder:text-slate-400"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                  className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import PasswordInput from '../lib/PasswordInput';
 import { auth, db } from '../lib/firebase';
 import { Heart, User, Users, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -261,7 +262,7 @@ await setDoc(doc(db, 'userPrivate', cred.user.uid), {
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-700">Şifre *</label>
-                  <input required type="password" className={inputClass} placeholder="En az 6 karakter" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <PasswordInput required className={inputClass} placeholder="En az 6 karakter" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
               </div>
 

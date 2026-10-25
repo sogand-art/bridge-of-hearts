@@ -2,7 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import {
+  doc, getDoc, addDoc, updateDoc, deleteDoc, collection,
+  query, where, onSnapshot, serverTimestamp
+} from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { 
   Heart, ShieldCheck, FileText, Package, ArrowUpRight, 
@@ -21,7 +24,7 @@ const TURKEY_CITIES = [
   "Bilecik", "Bingöl", "Bitlis", "Bolu", "Burdur", "Bursa", "Çanakkale", "Çankırı", "Çorum", "Denizli",
   "Diyarbakır", "Edirne", "Elazığ", "Erzincan", "Erzurum", "Eskişehir", "Gaziantep", "Giresun", "Gümüşhane", "Hakkâri",
   "Hatay", "Isparta", "Mersin", "İstanbul", "İzmir", "Kars", "Kastamonu", "Kayseri", "Kırklareli", "Kırşehir",
-  "Kocaeli", "Konya", "Kütahya", "Malatya", "Manisa", "Kahramanmaraş", "Mardin", "Muğla", "Muş", "Nevşehir",
+  "Kocaeli", "Konya", "KütauseEffecthya", "Malatya", "Manisa", "Kahramanmaraş", "Mardin", "Muğla", "Muş", "Nevşehir",
   "Niğde", "Ordu", "Rize", "Sakarya", "Samsun", "Siirt", "Sinop", "Sivas", "Tekirdağ", "Tokat",
   "Trabzon", "Tunceli", "Şanlıurfa", "Uşak", "Van", "Yozgat", "Zonguldak", "Aksaray", "Bayburt", "Karaman",
   "Kırıkkale", "Batman", "Şırnak", "Bartın", "Ardahan", "Iğdır", "Yalova", "Karabük", "Kilis", "Osmaniye", "Düzce"
@@ -67,73 +70,37 @@ const INITIAL_AVAILABLE_DONATIONS = [
     date: '14 Ekim 2026'
   }
 ];
-
-const INITIAL_REQUESTS = [
-  {
-    id: 1,
-    originalDonationId: null,
-    type: 'fatura',
-    title: 'Ekim Ayı Elektrik Faturası Desteği',
-    category: 'Fatura Ödemesi',
-    amount: 540,
-    status: 'pending_review',
-    statusText: 'Vakıf İncelemesinde / Onay Bekleniyor',
-    institution: 'CK Boğaziçi Elektrik',
-    dueDate: '2026-11-05',
-    date: '17 Ekim 2026',
-    imageUrl: '',
-    invoicePhoto: '',
-    donorName: '-'
-  },
-  {
-    id: 2,
-    originalDonationId: 202,
-    type: 'esya',
-    title: 'Çocuk Kışlık Mont ve Bot Seti (Numara 36)',
-    category: 'Giyim',
-    amount: 0,
-    status: 'approved_waiting_donor',
-    statusText: 'Vakıf Onayladı - Bağışçı Bekleniyor',
-    institution: 'İstanbul / Ümraniye',
-    dueDate: '',
-    date: '15 Ekim 2026',
-    imageUrl: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?auto=format&fit=crop&w=600&q=80',
-    invoicePhoto: '',
-    donorName: 'Mehmet B.'
-  },
-  {
-    id: 3,
-    originalDonationId: null,
-    type: 'fatura',
-    title: 'Eylül Ayı Su Faturası Desteği',
-    category: 'Fatura Ödemesi',
-    amount: 320,
-    status: 'completed',
-    statusText: 'Tamamlandı / Fatura Ödendi',
-    institution: 'İSKİ',
-    dueDate: '2026-10-15',
-    date: '02 Ekim 2026',
-    imageUrl: '',
-    invoicePhoto: '',
-    donorName: '-'
-  }
-];
-
+const compressImage = (dataUrl: string, maxSize = 1000, quality = 0.7): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas_failed')); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('image_load_failed'));
+    img.src = dataUrl;
+  });
 export default function NeedyDashboardPage() {
   const [availableDonations, setAvailableDonations] = useState(INITIAL_AVAILABLE_DONATIONS);
-  const [requests, setRequests] = useState(INITIAL_REQUESTS);
+
+  const [requests, setRequests] = useState<any[]>([]);
+  const [publicMap, setPublicMap] = useState<Record<string, any>>({});
   
-  const [requestedItemIds, setRequestedItemIds] = useState<number[]>([202]);
-  const [itemRequestMap, setItemRequestMap] = useState<Record<number, any>>({
-    202: INITIAL_AVAILABLE_DONATIONS[1]
-  });
+  const [requestedItemIds, setRequestedItemIds] = useState<number[]>([]);
+  const [itemRequestMap, setItemRequestMap] = useState<Record<number, any>>({});
   
   const [viewMode, setViewMode] = useState<'donations_market' | 'my_requests' | 'profile' | 'settings'>('my_requests');
   
   const [requestTabFilter, setRequestTabFilter] = useState<'all' | 'pending' | 'approved' | 'completed'>('all');
 
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
-  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [newRequestType, setNewRequestType] = useState<'esya' | 'fatura'>('fatura');
   const [isModalTypeDropdownOpen, setIsModalTypeDropdownOpen] = useState(false);
   const modalTypeDropdownRef = useRef<HTMLDivElement>(null);
@@ -145,6 +112,9 @@ export default function NeedyDashboardPage() {
   const [newRequestInvoicePhoto, setNewRequestInvoicePhoto] = useState<string | null>(null);
 
   const invoicePhotoInputRef = useRef<HTMLInputElement>(null);
+  const [newRequestInvoiceFile, setNewRequestInvoiceFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [uid, setUid] = useState<string | null>(null);
 
   const [requestToDelete, setRequestToDelete] = useState<any>(null);
 
@@ -161,14 +131,20 @@ export default function NeedyDashboardPage() {
     avatarUrl: ''
   });
 
-  useEffect(() => {
+
+     useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         window.location.href = '/login';
         return;
       }
+      setUid(user.uid);
       try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
+        const [snap, pSnap] = await Promise.all([
+          getDoc(doc(db, 'users', user.uid)),
+          getDoc(doc(db, 'userPrivate', user.uid)).catch(() => null),
+        ]);
+
         if (!snap.exists()) {
           await signOut(auth);
           window.location.href = '/login';
@@ -176,26 +152,17 @@ export default function NeedyDashboardPage() {
         }
         const d: any = snap.data();
 
-        // Bağışçı bu sayfaya giremez
         if (d.role !== 'needy') {
           window.location.href = '/donor';
           return;
         }
-        // Onaylanmamış hesap giremez
         if (d.status !== 'active' && d.status !== 'approved') {
           await signOut(auth);
           window.location.href = '/login';
           return;
         }
 
-        // T.C. kimlik hassas bilgi: ayrı koleksiyondan okunur ve maskelenir
-        let tc = '';
-        try {
-          const p = await getDoc(doc(db, 'userPrivate', user.uid));
-          if (p.exists()) tc = p.data().tcNo || '';
-        } catch (e) {
-          console.error('Özel bilgiler okunamadı:', e);
-        }
+        const tc = pSnap && pSnap.exists() ? pSnap.data().tcNo || '' : '';
 
         setApplicantInfo({
           fullName: d.fullName || '',
@@ -214,6 +181,31 @@ export default function NeedyDashboardPage() {
     });
     return () => unsub();
   }, []);
+  // ---- Talepleri Firestore'dan canlı çek ----
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(collection(db, 'requests'), where('userId', '==', uid));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => {
+        const data: any = d.data();
+        return { ...data, id: d.id };
+      });
+      list.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setRequests(list);
+      setRequestedItemIds(list.filter((r: any) => r.originalDonationId).map((r: any) => r.originalDonationId));
+    }, (err) => console.error('Talepler okunamadı:', err));
+    return () => unsub();
+  }, [uid]);
+    useEffect(() => {
+    const unsubs = requests
+      .filter((r) => r.status === 'approved_waiting_donor')
+      .map((r) =>
+        onSnapshot(doc(db, 'publicNeeds', r.id), (s) => {
+          setPublicMap((prev) => ({ ...prev, [r.id]: s.exists() ? s.data() : undefined }));
+        }, (err) => console.error('publicNeeds okunamadı:', err))
+      );
+    return () => unsubs.forEach((u) => u());
+  }, [requests]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -256,55 +248,52 @@ export default function NeedyDashboardPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleConfirmRequest = () => {
-    if (targetItemToRequest) {
-      const itemId = targetItemToRequest.id;
-
-      setRequestedItemIds(prev => [...prev, itemId]);
-      setItemRequestMap(prev => ({ ...prev, [itemId]: targetItemToRequest }));
-
-      const newReqObj = {
-        id: Date.now(),
-        originalDonationId: itemId,
+  // Vitrinden eşya talep etme (Firestore'a yazar)
+  const handleConfirmRequest = async () => {
+    if (!targetItemToRequest || !uid) return;
+    const item = targetItemToRequest;
+    try {
+      await addDoc(collection(db, 'requests'), {
+        userId: uid,
+        applicantName: applicantInfo.fullName,
+        applicantPhone: applicantInfo.phone,
+        applicantAddress: applicantInfo.address,
+        city: applicantInfo.city,
+        district: applicantInfo.district,
+        originalDonationId: item.id,
         type: 'esya',
-        title: targetItemToRequest.title,
-        category: targetItemToRequest.category,
+        title: item.title,
+        category: item.category,
         amount: 0,
         status: 'pending_review',
         statusText: 'Vakıf İncelemesinde / Onay Bekleniyor',
-        institution: `${targetItemToRequest.city} / ${targetItemToRequest.district}`,
+        institution: `${item.city} / ${item.district}`,
         dueDate: '',
-        date: 'Bugün',
-        imageUrl: targetItemToRequest.imageUrl,
+        imageUrl: item.imageUrl,
         invoicePhoto: '',
-        donorName: targetItemToRequest.donorName
-      };
-      setRequests(prev => [newReqObj, ...prev]);
-
-      setSuccessBanner(`"${targetItemToRequest.title}" için talep oluşturuldu. Vakıf onay aşamasına alındı.`);
+        donorName: item.donorName,
+        createdAt: serverTimestamp()
+      });
+      setSuccessBanner(`"${item.title}" için talep oluşturuldu. Vakıf onay aşamasına alındı.`);
       setTargetItemToRequest(null);
-
-      setTimeout(() => {
-        setSuccessBanner(null);
-      }, 5000);
+    } catch (err) {
+      console.error('Talep gönderilemedi:', err);
+      alert('Talep gönderilemedi. Lütfen tekrar deneyin.');
     }
+    setTimeout(() => setSuccessBanner(null), 5000);
   };
 
-  const handleExecuteDeleteRequest = () => {
-    if (requestToDelete) {
-      const reqId = requestToDelete.id;
-      const targetReq = requests.find(r => r.id === reqId);
-
-      if (targetReq?.originalDonationId) {
-        const originalId = targetReq.originalDonationId;
-        setRequestedItemIds(prev => prev.filter(id => id !== originalId));
-      }
-
-      setRequests(prev => prev.filter(r => r.id !== reqId));
+  const handleExecuteDeleteRequest = async () => {
+    if (!requestToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'requests', requestToDelete.id));
       setRequestToDelete(null);
       setSuccessBanner('Talep başarıyla iptal edildi / silindi.');
-      setTimeout(() => setSuccessBanner(null), 4000);
+    } catch (err) {
+      console.error('Talep silinemedi:', err);
+      alert('Talep silinemedi.');
     }
+    setTimeout(() => setSuccessBanner(null), 4000);
   };
 
   const handleOpenEditRequest = (req: any) => {
@@ -315,71 +304,92 @@ export default function NeedyDashboardPage() {
     setNewRequestAmount(req.amount ? req.amount.toString() : '');
     setNewRequestDueDate(req.dueDate || '');
     setNewRequestInvoicePhoto(req.invoicePhoto || null);
+    setNewRequestInvoiceFile(null);
     setIsNewRequestModalOpen(true);
   };
 
   const handleInvoicePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewRequestInvoicePhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Dosya en fazla 5MB olabilir.');
+      return;
     }
+    setNewRequestInvoiceFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setNewRequestInvoicePhoto(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
-  const handleSaveCustomRequest = (e: React.FormEvent) => {
+  const resetRequestForm = () => {
+    setIsNewRequestModalOpen(false);
+    setEditingRequestId(null);
+    setNewRequestTitle('');
+    setNewRequestInstitution('');
+    setNewRequestAmount('');
+    setNewRequestDueDate('');
+    setNewRequestInvoicePhoto(null);
+    setNewRequestInvoiceFile(null);
+  };
+
+  const handleSaveCustomRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newRequestTitle) {
-      const institutionValue = newRequestType === 'fatura' ? newRequestInstitution : 'Sosyal İnceleme Birimi';
+    if (!newRequestTitle || !uid || isSaving) return;
+    setIsSaving(true);
+
+    try {
+      const isFatura = newRequestType === 'fatura';
+      const institutionValue = isFatura ? newRequestInstitution : 'Sosyal İnceleme Birimi';
+
+           let invoicePhotoUrl = '';
+      if (isFatura && newRequestInvoiceFile && newRequestInvoicePhoto) {
+        invoicePhotoUrl = await compressImage(newRequestInvoicePhoto);
+      }
 
       if (editingRequestId) {
-        setRequests(prev => prev.map(r => {
-          if (r.id === editingRequestId) {
-            return {
-              ...r,
-              type: newRequestType,
-              title: newRequestTitle,
-              institution: institutionValue,
-              amount: newRequestType === 'fatura' && newRequestAmount ? Number(newRequestAmount) : 0,
-              dueDate: newRequestType === 'fatura' ? newRequestDueDate : '',
-              invoicePhoto: newRequestType === 'fatura' ? (newRequestInvoicePhoto || r.invoicePhoto) : '',
-              category: newRequestType === 'fatura' ? 'Fatura Ödemesi' : 'Özel Eşya / Destek'
-            };
-          }
-          return r;
-        }));
-        setSuccessBanner('Talep bilgileriniz ve fatura detaylarınız başarıyla güncellendi.');
+        const updates: any = {
+          type: newRequestType,
+          title: newRequestTitle,
+          institution: institutionValue,
+          amount: isFatura && newRequestAmount ? Number(newRequestAmount) : 0,
+          dueDate: isFatura ? newRequestDueDate : '',
+          category: isFatura ? 'Fatura Ödemesi' : 'Özel Eşya / Destek',
+          updatedAt: serverTimestamp()
+        };
+        if (invoicePhotoUrl) updates.invoicePhoto = invoicePhotoUrl;
+        await updateDoc(doc(db, 'requests', editingRequestId), updates);
+        setSuccessBanner('Talep bilgileriniz başarıyla güncellendi.');
       } else {
-        const customReq = {
-          id: Date.now(),
+        await addDoc(collection(db, 'requests'), {
+          userId: uid,
+          applicantName: applicantInfo.fullName,
+          applicantPhone: applicantInfo.phone,
+          applicantAddress: applicantInfo.address,
+          city: applicantInfo.city,
+          district: applicantInfo.district,
           originalDonationId: null,
           type: newRequestType,
           title: newRequestTitle,
-          category: newRequestType === 'fatura' ? 'Fatura Ödemesi' : 'Özel Eşya / Destek',
-          amount: newRequestType === 'fatura' && newRequestAmount ? Number(newRequestAmount) : 0,
+          category: isFatura ? 'Fatura Ödemesi' : 'Özel Eşya / Destek',
+          amount: isFatura && newRequestAmount ? Number(newRequestAmount) : 0,
           status: 'pending_review',
           statusText: 'Vakıf İncelemesinde / Onay Bekleniyor',
           institution: institutionValue,
-          dueDate: newRequestType === 'fatura' ? newRequestDueDate : '',
-          date: 'Bugün',
+          dueDate: isFatura ? newRequestDueDate : '',
           imageUrl: '',
-          invoicePhoto: newRequestType === 'fatura' ? (newRequestInvoicePhoto || '') : '',
-          donorName: '-'
-        };
-        setRequests(prev => [customReq, ...prev]);
-        setSuccessBanner(`Sayın ${applicantInfo.fullName}, yeni fatura/destek talep kaydınız yalnızca vakıf incelemesine gizli olarak oluşturuldu.`);
+          invoicePhoto: invoicePhotoUrl,
+          donorName: '-',
+          createdAt: serverTimestamp()
+        });
+        setSuccessBanner(`Sayın ${applicantInfo.fullName}, talebiniz vakıf incelemesine gizli olarak gönderildi.`);
       }
 
-      setIsNewRequestModalOpen(false);
-      setEditingRequestId(null);
-      setNewRequestTitle('');
-      setNewRequestInstitution('');
-      setNewRequestAmount('');
-      setNewRequestDueDate('');
-      setNewRequestInvoicePhoto(null);
-
+      resetRequestForm();
+    } catch (err) {
+      console.error('Talep kaydedilemedi:', err);
+      alert('Talep kaydedilemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setIsSaving(false);
       setTimeout(() => setSuccessBanner(null), 5000);
     }
   };
@@ -451,7 +461,6 @@ export default function NeedyDashboardPage() {
       .join('')
       .toUpperCase() || '?';
 
-  // Kullanıcı bilgisi yüklenene kadar yükleniyor ekranı
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] text-slate-500 text-sm font-bold">
@@ -577,7 +586,7 @@ export default function NeedyDashboardPage() {
                   </h3>
                   <span className="text-[10px] opacity-70 font-medium">Bilgileriniz ve açık adresiniz hak sahibi profilinizden otomatik eklenmiştir.</span>
                 </div>
-                <button onClick={() => { setIsNewRequestModalOpen(false); setEditingRequestId(null); }} className="p-1 opacity-60 hover:opacity-100">
+                <button onClick={resetRequestForm} className="p-1 opacity-60 hover:opacity-100">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -732,7 +741,7 @@ export default function NeedyDashboardPage() {
                 <div className="flex gap-3 pt-2">
                   <button 
                     type="button"
-                    onClick={() => { setIsNewRequestModalOpen(false); setEditingRequestId(null); }}
+                    onClick={resetRequestForm}
                     className={`flex-1 text-xs font-bold py-3 rounded-2xl transition-all cursor-pointer border ${
                       isDarkMode ? 'bg-[#121c16] hover:bg-[#203429] border-emerald-900 text-emerald-200' : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600'
                     }`}
@@ -741,9 +750,10 @@ export default function NeedyDashboardPage() {
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 bg-gradient-to-r from-emerald-700 to-teal-800 hover:opacity-95 text-white text-xs font-bold py-3 rounded-2xl transition-all cursor-pointer shadow-md"
+                    disabled={isSaving}
+                    className="flex-1 bg-gradient-to-r from-emerald-700 to-teal-800 hover:opacity-95 disabled:opacity-60 text-white text-xs font-bold py-3 rounded-2xl transition-all cursor-pointer shadow-md"
                   >
-                    {editingRequestId ? 'Değişiklikleri Kaydet' : 'Talep Oluştur'}
+                    {isSaving ? 'Kaydediliyor...' : (editingRequestId ? 'Değişiklikleri Kaydet' : 'Talep Oluştur')}
                   </button>
                 </div>
               </form>
@@ -956,7 +966,7 @@ export default function NeedyDashboardPage() {
           </section>
         )}
 
-        {/* TALEPLERİM SEKMESİ İÇİN SAĞDAN SOLA TAM GENİŞLİKTE ÜST BANNER */}
+        {/* TALEPLERİM BANNER */}
         {viewMode === 'my_requests' && (
           <section className="bg-gradient-to-r from-[#1B3022] via-[#24422F] to-[#122217] text-white py-12 px-4 sm:px-6 lg:px-8 shadow-xl relative overflow-hidden">
             <div className="absolute right-0 top-0 translate-x-16 -translate-y-16 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
@@ -991,7 +1001,7 @@ export default function NeedyDashboardPage() {
                 </div>
 
                 <button
-                  onClick={() => { setEditingRequestId(null); setNewRequestType('fatura'); setNewRequestTitle(''); setNewRequestInstitution(''); setNewRequestAmount(''); setNewRequestDueDate(''); setNewRequestInvoicePhoto(null); setIsNewRequestModalOpen(true); }}
+                  onClick={() => { setEditingRequestId(null); setNewRequestType('fatura'); setNewRequestTitle(''); setNewRequestInstitution(''); setNewRequestAmount(''); setNewRequestDueDate(''); setNewRequestInvoicePhoto(null); setNewRequestInvoiceFile(null); setIsNewRequestModalOpen(true); }}
                   className="bg-white hover:bg-slate-100 text-slate-900 font-extrabold px-5 py-4 rounded-3xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-xl"
                 >
                   <PlusCircle className="w-4 h-4 text-emerald-700" />
@@ -1002,7 +1012,7 @@ export default function NeedyDashboardPage() {
           </section>
         )}
 
-        {/* PROFİL SEKMESİ İÇİN SAĞDAN SOLA TAM GENİŞLİKTE ÜST BANNER */}
+        {/* PROFİL BANNER */}
         {viewMode === 'profile' && (
           <section className="bg-gradient-to-r from-[#1B3022] via-[#24422F] to-[#122217] text-white py-12 px-4 sm:px-6 lg:px-8 shadow-xl relative overflow-hidden">
             <div className="absolute right-0 top-0 translate-x-16 -translate-y-16 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
@@ -1054,7 +1064,7 @@ export default function NeedyDashboardPage() {
           </section>
         )}
 
-        {/* AYARLAR SEKMESİ İÇİN SAĞDAN SOLA TAM GENİŞLİKTE ÜST BANNER */}
+        {/* AYARLAR BANNER */}
         {viewMode === 'settings' && (
           <section className="bg-gradient-to-r from-[#1B3022] via-[#24422F] to-[#122217] text-white py-12 px-4 sm:px-6 lg:px-8 shadow-xl relative overflow-hidden">
             <div className="absolute right-0 top-0 translate-x-16 -translate-y-16 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
@@ -1367,7 +1377,13 @@ export default function NeedyDashboardPage() {
                     }
 
                     const isCompleted = req.status === 'completed';
-                    const isItemRequest = req.originalDonationId !== null;
+                    const isItemRequest = !!req.originalDonationId;
+                                        const pn = publicMap[req.id];
+                    const donorFound = pn?.paymentStatus === 'fulfilled' || pn?.paymentStatus === 'paid' || pn?.paymentStatus === 'closed';
+                    const liveStatusText =
+                      pn?.paymentStatus === 'paid' ? 'Ödeme Yapıldı / Destek Yolda'
+                      : pn?.paymentStatus === 'fulfilled' ? 'Bağışçı Bulundu / Teslimat Hazırlanıyor'
+                      : req.statusText;
 
                     return (
                       <div key={req.id} className={`rounded-3xl border shadow-sm p-6 flex flex-col justify-between space-y-4 transition-all ${boxBg}`}>
@@ -1395,7 +1411,7 @@ export default function NeedyDashboardPage() {
 
                           <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-[11px] font-bold border shadow-xs w-full justify-center ${badgeClass}`}>
                             {badgeIcon}
-                            <span className="truncate">{req.statusText}</span>
+                            <span className="truncate">{liveStatusText}</span>
                           </div>
 
                           <div className={`p-3.5 rounded-2xl border space-y-2.5 text-xs shadow-xs ${isDarkMode ? 'bg-[#121c16]/90 border-emerald-900/60 text-emerald-100' : 'bg-white/95 border-slate-200 text-slate-800'}`}>
@@ -1414,7 +1430,9 @@ export default function NeedyDashboardPage() {
                               ) : (
                                 <div>
                                   <span className="text-[9px] opacity-60 block font-semibold uppercase">Bağışçı</span>
-                                  <span className="font-bold text-[11px] truncate block">{req.donorName !== '-' ? req.donorName : 'Bekleniyor'}</span>
+                                  <span className="font-bold text-[11px] truncate block">
+  {donorFound ? 'Bağışçı Bulundu' : (req.donorName !== '-' ? req.donorName : 'Bekleniyor')}
+</span>
                                 </div>
                               )}
                             </div>
@@ -1804,11 +1822,10 @@ export default function NeedyDashboardPage() {
         </main>
       </div>
 
-      {/* GÖRSELDEKİ BİREBİR AYNI SİYAH ALT PANEL (GRİ YAZILARLA) */}
+      {/* ALT PANEL */}
       <footer className="bg-[#181C20] text-[#9CA3AF] py-12 px-6 sm:px-12 lg:px-20 mt-20 border-t border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
           
-          {/* SOL TARAF: LOGO VE SOSYAL MEDYA İKONLARI */}
           <div className="space-y-4">
             <div>
               <span className="text-[10px] tracking-[0.25em] uppercase font-bold text-[#6B7280] block mb-1">AZİZ MAHMÛD</span>
@@ -1831,7 +1848,6 @@ export default function NeedyDashboardPage() {
             </div>
           </div>
 
-          {/* SAĞ TARAF: ALT ALTA LİNKLER (GRİ RENGİNDE) */}
           <div className="flex flex-col items-start md:items-end gap-2.5 text-xs font-semibold text-[#9CA3AF]">
             <a href="#" className="hover:text-white transition-colors">Kurumsal Sayfa</a>
             <a href="#" className="hover:text-white transition-colors">Hesap Numaralarımız</a>

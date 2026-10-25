@@ -4,12 +4,13 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { ShieldCheck, Lock, Mail, ArrowRight, CheckCircle2, Check } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, ArrowRight, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 
 export default function AdminGirisPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -133,16 +134,25 @@ export default function AdminGirisPage() {
                   Şifre
                 </label>
               </div>
-              <div className="relative w-full">
+                         <div className="relative w-full">
                 <Lock className="absolute left-4 top-4 w-5 h-5 text-emerald-600" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-4 text-xs sm:text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all shadow-2xs block"
+                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-12 text-xs sm:text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all shadow-2xs block"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                  className="absolute right-4 top-4 text-slate-500 hover:text-slate-900 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
