@@ -17,7 +17,7 @@ const TURKEY_CITIES: { [key: string]: string[] } = {
   'İstanbul': ['Kadıköy', 'Beylikdüzü', 'Sancaktepe', 'Sultanbeyli', 'Ümraniye'],
 };
 
-const NEEDS_COLLECTION = 'publicNeeds';
+const NEEDS_COLLECTION = 'requests';
 
 type ViewMode = 'explore' | 'create_listing' | 'my_item_listings' | 'history' | 'verification' | 'profile' | 'settings';
 
@@ -184,7 +184,7 @@ export default function DonorDashboardPage() {
               // ihtiyaç sahibinin kişisel bilgileri bilerek taşınmıyor
             };
           })
-          .filter((x: any) => !['paid', 'fulfilled', 'rejected', 'closed'].includes(x.paymentStatus));
+          .filter((x: any) => x.status === 'approved' && !['paid', 'fulfilled', 'rejected'].includes(x.paymentStatus));
         list.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         setDonationItems(list);
       },

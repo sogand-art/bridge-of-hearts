@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { ShieldCheck, Lock, Mail, ArrowRight, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 
 export default function AdminGirisPage() {
@@ -13,27 +14,30 @@ export default function AdminGirisPage() {
     const [showPassword, setShowPassword] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setNotification(null);
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const token = await cred.user.getIdTokenResult(true);
+ const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setNotification(null);
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
 
-      if (!token.claims.admin) {
-        await signOut(auth);
-        setNotification('Bu hesabın yönetici yetkisi yok.');
-        setTimeout(() => setNotification(null), 4000);
-        return;
-      }
+    const snap = await getDoc(doc(db, 'users', cred.user.uid));
+    const isAdmin = snap.exists() && (snap.data() as any).role === 'admin';
 
-      setNotification('Yetkili girişi başarılı. Admin paneline yönlendiriliyorsunuz...');
-      setTimeout(() => router.push('/admin'), 1000);
-    } catch {
-      setNotification('E-posta veya şifre hatalı.');
+    if (!isAdmin) {
+      await signOut(auth);
+      setNotification('Bu hesabın yönetici yetkisi yok.');
       setTimeout(() => setNotification(null), 4000);
+      return;
     }
-  };
+
+    setNotification('Yetkili girişi başarılı. Admin paneline yönlendiriliyorsunuz...');
+    setTimeout(() => router.push('/admin'), 1000);
+  } catch (err) {
+    console.error(err);
+    setNotification('E-posta veya şifre hatalı.');
+    setTimeout(() => setNotification(null), 4000);
+  }
+};
 
 
 

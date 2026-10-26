@@ -115,7 +115,8 @@ export default function NeedyDashboardPage() {
   const [newRequestInvoiceFile, setNewRequestInvoiceFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
-
+const [newRequestHousehold, setNewRequestHousehold] = useState('');
+const [newRequestIncome, setNewRequestIncome] = useState('');
   const [requestToDelete, setRequestToDelete] = useState<any>(null);
 
   // ---- Giriş yapan kullanıcının bilgileri (Firestore'dan yüklenir) ----
@@ -272,6 +273,8 @@ export default function NeedyDashboardPage() {
         imageUrl: item.imageUrl,
         invoicePhoto: '',
         donorName: item.donorName,
+        householdCount: newRequestHousehold ? Number(newRequestHousehold) : null,
+monthlyIncome: newRequestIncome ? `${Number(newRequestIncome).toLocaleString('tr-TR')} TL` : '',
         createdAt: serverTimestamp()
       });
       setSuccessBanner(`"${item.title}" için talep oluşturuldu. Vakıf onay aşamasına alındı.`);
@@ -304,6 +307,8 @@ export default function NeedyDashboardPage() {
     setNewRequestAmount(req.amount ? req.amount.toString() : '');
     setNewRequestDueDate(req.dueDate || '');
     setNewRequestInvoicePhoto(req.invoicePhoto || null);
+    setNewRequestHousehold(req.householdCount ? String(req.householdCount) : '');
+    setNewRequestIncome(req.monthlyIncome ? String(req.monthlyIncome).replace(/[^\d]/g, '') : '');
     setNewRequestInvoiceFile(null);
     setIsNewRequestModalOpen(true);
   };
@@ -330,6 +335,8 @@ export default function NeedyDashboardPage() {
     setNewRequestDueDate('');
     setNewRequestInvoicePhoto(null);
     setNewRequestInvoiceFile(null);
+    setNewRequestHousehold('');
+    setNewRequestIncome('');
   };
 
   const handleSaveCustomRequest = async (e: React.FormEvent) => {
@@ -354,6 +361,8 @@ export default function NeedyDashboardPage() {
           amount: isFatura && newRequestAmount ? Number(newRequestAmount) : 0,
           dueDate: isFatura ? newRequestDueDate : '',
           category: isFatura ? 'Fatura Ödemesi' : 'Özel Eşya / Destek',
+          householdCount: newRequestHousehold ? Number(newRequestHousehold) : null,
+          monthlyIncome: newRequestIncome ? `${Number(newRequestIncome).toLocaleString('tr-TR')} TL` : '',
           updatedAt: serverTimestamp()
         };
         if (invoicePhotoUrl) updates.invoicePhoto = invoicePhotoUrl;
@@ -379,6 +388,8 @@ export default function NeedyDashboardPage() {
           imageUrl: '',
           invoicePhoto: invoicePhotoUrl,
           donorName: '-',
+          householdCount: newRequestHousehold ? Number(newRequestHousehold) : null,
+          monthlyIncome: newRequestIncome ? `${Number(newRequestIncome).toLocaleString('tr-TR')} TL` : '',
           createdAt: serverTimestamp()
         });
         setSuccessBanner(`Sayın ${applicantInfo.fullName}, talebiniz vakıf incelemesine gizli olarak gönderildi.`);
@@ -669,6 +680,22 @@ export default function NeedyDashboardPage() {
                     }`}
                   />
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  <div>
+    <label className="block text-xs font-bold mb-1.5">Hane Kişi Sayısı</label>
+    <input type="number" min={1} required value={newRequestHousehold}
+      onChange={(e) => setNewRequestHousehold(e.target.value)}
+      placeholder="Örn: 4"
+      className="w-full border rounded-2xl py-3 px-4 text-xs font-medium bg-slate-50 border-slate-200 text-slate-800" />
+  </div>
+  <div>
+    <label className="block text-xs font-bold mb-1.5">Aylık Hane Geliri (TL)</label>
+    <input type="number" min={0} required value={newRequestIncome}
+      onChange={(e) => setNewRequestIncome(e.target.value)}
+      placeholder="Örn: 17000"
+      className="w-full border rounded-2xl py-3 px-4 text-xs font-medium bg-slate-50 border-slate-200 text-slate-800" />
+  </div>
+</div>
 
                 {newRequestType === 'fatura' && (
                   <div>
@@ -1001,12 +1028,27 @@ export default function NeedyDashboardPage() {
                 </div>
 
                 <button
-                  onClick={() => { setEditingRequestId(null); setNewRequestType('fatura'); setNewRequestTitle(''); setNewRequestInstitution(''); setNewRequestAmount(''); setNewRequestDueDate(''); setNewRequestInvoicePhoto(null); setNewRequestInvoiceFile(null); setIsNewRequestModalOpen(true); }}
-                  className="bg-white hover:bg-slate-100 text-slate-900 font-extrabold px-5 py-4 rounded-3xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-xl"
-                >
-                  <PlusCircle className="w-4 h-4 text-emerald-700" />
-                  <span>Yeni Talep Oluştur</span>
-                </button>
+               
+  onClick={() => {
+    setEditingRequestId(null);
+    setNewRequestType('fatura');
+    setNewRequestTitle('');
+    setNewRequestInstitution('');
+    setNewRequestAmount('');
+    setNewRequestDueDate('');
+    setNewRequestInvoicePhoto(null);
+    setNewRequestInvoiceFile(null);
+    setNewRequestHousehold('');
+    setNewRequestIncome('');
+    setIsNewRequestModalOpen(true);
+  }}
+  className="bg-white hover:bg-slate-100 text-slate-900 font-extrabold px-5 py-4 rounded-3xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-xl"
+>
+  <PlusCircle className="w-4 h-4 text-emerald-700" />
+  <span>Yeni Talep Oluştur</span>
+</button>
+ 
+                
               </div>
             </div>
           </section>
