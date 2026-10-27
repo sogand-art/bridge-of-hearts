@@ -6,7 +6,7 @@ import {
   doc, getDoc, addDoc, updateDoc, deleteDoc, collection,
   query, where, onSnapshot, serverTimestamp
 } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { needyAuth as auth, needyDb as db } from '../lib/firebase-needy';
 import { 
   Heart, ShieldCheck, FileText, Package, ArrowUpRight, 
   MapPin, CheckCircle2, PlusCircle, User, Truck, 
@@ -87,13 +87,13 @@ const compressImage = (dataUrl: string, maxSize = 1000, quality = 0.7): Promise<
     img.src = dataUrl;
   });
 export default function NeedyDashboardPage() {
-  const [availableDonations, setAvailableDonations] = useState(INITIAL_AVAILABLE_DONATIONS);
+  const [availableDonations, setAvailableDonations] = useState<any[]>([]);
 
   const [requests, setRequests] = useState<any[]>([]);
   const [publicMap, setPublicMap] = useState<Record<string, any>>({});
   
-  const [requestedItemIds, setRequestedItemIds] = useState<number[]>([]);
-  const [itemRequestMap, setItemRequestMap] = useState<Record<number, any>>({});
+  const [requestedItemIds, setRequestedItemIds] = useState<string[]>([]);
+  const [itemRequestMap, setItemRequestMap] = useState<Record<string, any>>({});
   
   const [viewMode, setViewMode] = useState<'donations_market' | 'my_requests' | 'profile' | 'settings'>('my_requests');
   
@@ -131,6 +131,42 @@ const [newRequestIncome, setNewRequestIncome] = useState('');
     address: '',
     avatarUrl: ''
   });
+
+    // ---- Onaylı bağış eşyalarını Firestore'dan canlı çek ----
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(
+      collection(db, 'itemListings'),
+      where('status', '==', 'Onaylandı & Yayında')
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => {
+          const x: any = d.data();
+          return {
+            id: d.id,
+            title: x.title || 'Eşya',
+            category: x.category || 'Eşya',
+            city: x.city || '',
+            district: x.district || '',
+            donorName: x.donorName || 'Bağışçı',
+            condition: x.condition || '-',
+            description: x.description || '',
+            imageUrl: x.image || '',
+            createdAt: x.createdAt,
+            date: x.createdAt?.seconds
+              ? new Date(x.createdAt.seconds * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+              : '-',
+          };
+        });
+        list.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setAvailableDonations(list);
+      },
+      (err) => console.error('Vitrin okunamadı:', err)
+    );
+    return () => unsub();
+  }, [uid]);
 
 
      useEffect(() => {

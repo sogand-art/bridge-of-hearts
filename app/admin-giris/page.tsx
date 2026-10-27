@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { adminAuth as auth, adminDb as db } from '../lib/firebase-admin';
 import { ShieldCheck, Lock, Mail, ArrowRight, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 
 export default function AdminGirisPage() {

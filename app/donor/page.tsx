@@ -5,16 +5,32 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp,
 } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { donorAuth as auth, donorDb as db } from '../lib/firebase-donor';
 import {
   Heart, ShieldCheck, FileText, Package, MapPin, CheckCircle2, PlusCircle, User, Clock, X,
   Settings, LogOut, History, Check, Lock, Search, FileCheck, Phone, Bell, Moon, Sun, Download,
-  Sparkles, Menu, Edit3, Trash2, Camera, ChevronDown, Image as ImageIcon,
+  Sparkles, Menu, Edit3, Trash2, Camera, ChevronDown, Image as ImageIcon, Eye, EyeOff, CreditCard,
 } from 'lucide-react';
+
 
 // ⬇️ Kendi TURKEY_CITIES bloğunu buraya yapıştır (bu kısa listeyi sil) ⬇️
 const TURKEY_CITIES: { [key: string]: string[] } = {
-  'İstanbul': ['Kadıköy', 'Beylikdüzü', 'Sancaktepe', 'Sultanbeyli', 'Ümraniye'],
+  'Adana': ['Seyhan', 'Yüreğir', 'Çukurova', 'Sarıçam', 'Ceyhan'],
+  'Ankara': ['Çankaya', 'Keçiören', 'Yenimahalle', 'Mamak', 'Etimesgut', 'Sincan', 'Altındağ', 'Pursaklar', 'Gölbaşı'],
+  'Antalya': ['Muratpaşa', 'Kepez', 'Konyaaltı', 'Alanya', 'Manavgat'],
+  'Bursa': ['Nilüfer', 'Osmangazi', 'Yıldırım', 'Mudanya', 'Gemlik', 'İnegöl'],
+  'Diyarbakır': ['Bağlar', 'Kayapınar', 'Yenişehir', 'Sur'],
+  'Gaziantep': ['Şahinbey', 'Şehitkamil', 'Nizip'],
+  'İstanbul': ['Kadıköy', 'Üsküdar', 'Ümraniye', 'Sancaktepe', 'Sultanbeyli', 'Beylikdüzü', 'Esenyurt', 'Fatih', 'Bağcılar', 'Başakşehir', 'Pendik', 'Kartal', 'Maltepe', 'Ataşehir', 'Bakırköy', 'Küçükçekmece', 'Avcılar', 'Beşiktaş', 'Şişli', 'Zeytinburnu'],
+  'İzmir': ['Konak', 'Karşıyaka', 'Bornova', 'Buca', 'Bayraklı', 'Çiğli', 'Karabağlar'],
+  'Kayseri': ['Melikgazi', 'Kocasinan', 'Talas'],
+  'Kocaeli': ['İzmit', 'Gebze', 'Darıca', 'Körfez', 'Derince'],
+  'Konya': ['Selçuklu', 'Meram', 'Karatay'],
+  'Mersin': ['Mezitli', 'Yenişehir', 'Toroslar', 'Akdeniz', 'Tarsus'],
+  'Sakarya': ['Adapazarı', 'Serdivan', 'Erenler'],
+  'Samsun': ['İlkadım', 'Atakum', 'Canik'],
+  'Şanlıurfa': ['Eyyübiye', 'Haliliye', 'Karaköprü', 'Siverek'],
+  'Trabzon': ['Ortahisar', 'Akçaabat'],
 };
 
 const NEEDS_COLLECTION = 'requests';
@@ -35,6 +51,36 @@ const toAscii = (s: string) =>
     .replace(/ş/g, 's').replace(/Ş/g, 'S').replace(/ı/g, 'i').replace(/İ/g, 'I')
     .replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C');
 
+    function PasswordInput({
+  value, onChange, placeholder, className,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className={`${className || ''} pr-11`}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        tabIndex={-1}
+        aria-label={show ? 'Şifreyi gizle' : 'Şifreyi göster'}
+        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 cursor-pointer"
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
 function Select({
   value, options, onChange, darkMode, big = false, maxH = 'max-h-48',
 }: {
@@ -89,6 +135,11 @@ export default function DonorDashboardPage() {
   const [activeItemToPay, setActiveItemToPay] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const [showCardModal, setShowCardModal] = useState(false);
+const [cardNo, setCardNo] = useState('');
+const [cardName, setCardName] = useState('');
+const [cardExp, setCardExp] = useState('');
+const [cardCvc, setCardCvc] = useState('');
   const [itemToRequestApproval, setItemToRequestApproval] = useState<any>(null);
   const [itemToFulfill, setItemToFulfill] = useState<any>(null);
   const [deliveryMethod, setDeliveryMethod] = useState<'foundation_pickup' | 'donor_delivers'>('foundation_pickup');
@@ -384,29 +435,53 @@ const uploadImageIfNeeded = async (img: string | null) => {
   };
 
   // ---- Ödeme (sunucu tarafı iyzico/PayTR entegrasyonu bekleniyor) ----
-  const handleConfirmYes = async () => {
-    if (!activeItemToPay || !auth.currentUser) return;
-    setIsPaying(true);
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch('/api/payment/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ needId: String(activeItemToPay.id) }),
-      });
-      if (!res.ok) throw new Error('payment_start_failed');
-      const data = await res.json();
-      if (data.paymentUrl) { window.location.href = data.paymentUrl; return; }
-      throw new Error('no_payment_url');
-    } catch (err) {
-      console.error(err);
-      showToast('Ödeme sistemi henüz aktif değil. Lütfen daha sonra tekrar deneyin.', 5000);
-      setShowConfirmModal(false);
-      setActiveItemToPay(null);
-    } finally {
-      setIsPaying(false);
-    }
-  };
+  const handleConfirmYes = () => {
+  setShowConfirmModal(false);
+  setShowCardModal(true);
+};
+
+const closeCardModal = () => {
+  setShowCardModal(false);
+  setActiveItemToPay(null);
+  setCardNo(''); setCardName(''); setCardExp(''); setCardCvc('');
+};
+
+const handleCompleteCardPayment = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!activeItemToPay || !auth.currentUser || isPaying) return;
+
+  if (cardNo.replace(/\s/g, '').length !== 16) { showToast('Kart numarası 16 haneli olmalı.'); return; }
+  if (!cardName.trim()) { showToast('Kart üzerindeki ismi girin.'); return; }
+  if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExp)) { showToast('Son kullanma tarihi AA/YY biçiminde olmalı.'); return; }
+  if (!/^\d{3}$/.test(cardCvc)) { showToast('CVC 3 haneli olmalı.'); return; }
+
+  setIsPaying(true);
+  const item = activeItemToPay;
+  const uid = auth.currentUser.uid;
+  try {
+    await updateDoc(doc(db, NEEDS_COLLECTION, String(item.id)), {
+      paymentStatus: 'fulfilled',
+      fulfilledBy: uid,
+      fulfilledAt: serverTimestamp(),
+    });
+    await addDoc(collection(db, 'donations'), {
+      userId: uid,
+      type: 'fatura',
+      title: item.title,
+      amount: item.amount,
+      location: item.location,
+      receiptNo: `MAK-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
+      createdAt: serverTimestamp(),
+    });
+    closeCardModal();
+    showToast(`Ödeme tamamlandı! "${item.title}" için makbuzunuz Bağış Geçmişim'de.`, 5000);
+  } catch (err: any) {
+    console.error(err);
+    showToast('Ödeme kaydedilemedi: ' + (err?.message || ''), 5000);
+  } finally {
+    setIsPaying(false);
+  }
+};
 
   // ---- Makbuz ----
   const handleDownloadReceipt = async (receiptNo: string, title: string, amount: number, location: string, date: string) => {
@@ -623,21 +698,73 @@ const uploadImageIfNeeded = async (img: string | null) => {
       )}
 
       {/* Ödeme onay modalı */}
-      {showConfirmModal && activeItemToPay && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={modalCls}>
-            <div className="w-12 h-12 bg-[#22b2a6]/10 text-[#22b2a6] rounded-2xl flex items-center justify-center border border-[#22b2a6]/30 mx-auto"><ShieldCheck className="w-6 h-6" /></div>
-            <div className="text-center space-y-1">
-              <h3 className="text-lg font-extrabold">Ödeme Onayı</h3>
-              <p className="text-xs opacity-70"><span className="font-bold text-[#1b9187]">{activeItemToPay.title}</span> için <span className="font-extrabold">{activeItemToPay.amount} TL</span> tutarındaki ödemeyi gerçekleştirmek istediğinize emin misiniz? Güvenli ödeme sayfasına yönlendirileceksiniz.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button type="button" disabled={isPaying} onClick={() => { setShowConfirmModal(false); setActiveItemToPay(null); }} className={ghostBtn}>Hayır, Vazgeç</button>
-              <button type="button" disabled={isPaying} onClick={handleConfirmYes} className={`${primaryBtn} py-3 text-xs disabled:opacity-60`}>{isPaying ? 'Yönlendiriliyor...' : 'Evet, Eminim'}</button>
-            </div>
+{showConfirmModal && activeItemToPay && (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className={modalCls}>
+      <div className="w-12 h-12 bg-[#22b2a6]/10 text-[#22b2a6] rounded-2xl flex items-center justify-center border border-[#22b2a6]/30 mx-auto"><ShieldCheck className="w-6 h-6" /></div>
+      <div className="text-center space-y-1">
+        <h3 className="text-lg font-extrabold">Ödeme Onayı</h3>
+        <p className="text-xs opacity-70"><span className="font-bold text-[#1b9187]">{activeItemToPay.title}</span> için <span className="font-extrabold">{activeItemToPay.amount} TL</span> tutarındaki ödemeyi gerçekleştirmek istediğinize emin misiniz?</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <button type="button" onClick={() => { setShowConfirmModal(false); setActiveItemToPay(null); }} className={ghostBtn}>Hayır, Vazgeç</button>
+        <button type="button" onClick={handleConfirmYes} className={`${primaryBtn} py-3 text-xs`}>Evet, Eminim</button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Kart ödeme modalı */}
+{showCardModal && activeItemToPay && (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className={modalCls}>
+      <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2"><CreditCard className="w-5 h-5 text-[#22b2a6]" /><h3 className="text-base font-extrabold">Güvenli Kart Ödeme Ekranı</h3></div>
+        <button type="button" onClick={closeCardModal} className="p-1 rounded-lg cursor-pointer"><X className="w-5 h-5" /></button>
+      </div>
+
+      <div className="text-xs bg-[#22b2a6]/10 p-3 rounded-xl border border-[#22b2a6]/30 flex items-center justify-between">
+        <span>Ödenecek Tutar:</span>
+        <span className="font-extrabold text-[#1b9187] text-sm">{activeItemToPay.amount} TL</span>
+      </div>
+
+      <div className="text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 rounded-xl px-3 py-2">
+        TEST MODU: Gerçek kart bilgisi girmeyin. Hiçbir ödeme alınmaz.
+      </div>
+
+      <form onSubmit={handleCompleteCardPayment} className="space-y-4 text-xs">
+        <div>
+          <label className="block font-bold mb-1 opacity-80">Kart Üzerindeki Ad Soyad</label>
+          <input type="text" placeholder="Ad Soyad" value={cardName} onChange={(e) => setCardName(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="block font-bold mb-1 opacity-80">Kart Numarası</label>
+          <input type="text" inputMode="numeric" maxLength={19} placeholder="0000 0000 0000 0000" value={cardNo}
+            onChange={(e) => setCardNo(e.target.value.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim())}
+            className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block font-bold mb-1 opacity-80">Son Kullanma (AA/YY)</label>
+            <input type="text" inputMode="numeric" maxLength={5} placeholder="10/28" value={cardExp}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                setCardExp(v.length > 2 ? v.slice(0, 2) + '/' + v.slice(2) : v);
+              }} className={inputCls} />
+          </div>
+          <div>
+            <label className="block font-bold mb-1 opacity-80">CVC</label>
+            <input type="password" inputMode="numeric" maxLength={3} placeholder="•••" value={cardCvc}
+              onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 3))} className={inputCls} />
           </div>
         </div>
-      )}
+        <button type="submit" disabled={isPaying} className={`${primaryBtn} w-full font-extrabold py-3.5 text-xs disabled:opacity-60`}>
+          {isPaying ? 'İşleniyor...' : 'Ödemeyi Tamamla & Makbuz Al'}
+        </button>
+      </form>
+    </div>
+  </div>
+)}
 
       {/* Yan panel */}
       <div className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-50 transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)} />

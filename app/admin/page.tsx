@@ -5,7 +5,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc, addDoc, collection, onSnapshot, serverTimestamp, deleteField,
 } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { adminAuth as auth, adminDb as db } from '../lib/firebase-admin';
 import {
   ShieldCheck, FileText, Package, Users, CheckCircle2, XCircle, Clock, MapPin, LogOut, Search,
   Calendar, Gift, Check, X, Sparkles, Flame, Menu, LayoutDashboard, HeartHandshake, TrendingUp,
@@ -121,6 +121,7 @@ export default function AdminDashboardPage() {
         paymentStatus: x.paymentStatus || 'none',
         requestedBy: x.requestedBy || '',
         paidBy: x.paidBy || '',
+        fulfilledBy: x.fulfilledBy || '',
         date: fmtDate(x.createdAt),
       };
     })
@@ -143,14 +144,15 @@ export default function AdminDashboardPage() {
       ...( (l.status || '').includes('Reddedildi') ? {} : {} ),
     })).filter((c, i) => !(rawListings[i].status || '').includes('Reddedildi')),
     ...requests
-      .filter((r) => ['requested', 'approved', 'paid'].includes(r.paymentStatus))
+      .filter((r) => ['requested', 'paid', 'fulfilled'].includes(r.paymentStatus))
       .map((r): Card => ({
         key: 'r_' + r.id, kind: 'invoice', id: r.id,
         title: r.title, category: r.category, city: r.city, district: r.district,
-        donorName: userName(r.paymentStatus === 'paid' ? r.paidBy : r.requestedBy),
-        donorPhone: userPhone(r.paymentStatus === 'paid' ? r.paidBy : r.requestedBy),
+        donorName: userName(r.paymentStatus === 'paid' ? r.paidBy : r.paymentStatus === 'fulfilled' ? r.fulfilledBy : r.requestedBy),
+        donorPhone: userPhone(r.paymentStatus === 'paid' ? r.paidBy : r.paymentStatus === 'fulfilled' ? r.fulfilledBy : r.requestedBy),
+        
         amount: r.amount, imageUrl: null, description: `${r.institution !== '-' ? r.institution + ' • ' : ''}Son ödeme: ${r.dueDate}`,
-        stage: r.paymentStatus === 'requested' ? 'pending' : r.paymentStatus === 'approved' ? 'waiting' : 'done',
+        stage: r.paymentStatus === 'requested' ? 'pending' : 'done',
         date: r.date, createdAt: r.createdAt,
       })),
   ].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -195,7 +197,7 @@ export default function AdminDashboardPage() {
     status: 'approved',
     statusText: 'Vakıf Onayladı / Bağışçı Bekleniyor',
     approvedAt: serverTimestamp(),
-    paymentStatus: 'none',
+    paymentStatus: 'approved',
   }), 'Talep onaylandı, bağışçılara açıldı.');
  const handleRejectRequest = (id: string) =>
   run(() => updateDoc(doc(db, 'requests', id), {

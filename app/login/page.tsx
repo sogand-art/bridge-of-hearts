@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { donorAuth, donorDb } from '../lib/firebase-donor';
+import { needyAuth, needyDb } from '../lib/firebase-needy';
 import { Heart, User, Mail, Lock, ArrowRight, CheckCircle2, AlertCircle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
  
 export default function LoginPage() {
@@ -21,6 +22,8 @@ export default function LoginPage() {
     setErrorMsg(null);
     setInfoMsg(null);
     setLoading(true);
+    const auth = selectedRole === 'donor' ? donorAuth : needyAuth;
+    const db = selectedRole === 'donor' ? donorDb : needyDb;
 
     try {
       console.log('1) giriş deneniyor');
@@ -80,6 +83,7 @@ export default function LoginPage() {
   };
 
   const handleForgotPassword = async () => {
+    const auth = selectedRole === 'donor' ? donorAuth : needyAuth;
     setErrorMsg(null);
     setInfoMsg(null);
     if (!email.trim()) {
