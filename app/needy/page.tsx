@@ -378,6 +378,10 @@ monthlyIncome: newRequestIncome ? `${Number(newRequestIncome).toLocaleString('tr
   const handleSaveCustomRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRequestTitle || !uid || isSaving) return;
+    if (newRequestType === 'fatura' && !newRequestInvoicePhoto) {
+  alert('Lütfen fatura fotoğrafını yükleyin. Fotoğraf zorunludur.');
+  return;
+}
     setIsSaving(true);
 
     try {

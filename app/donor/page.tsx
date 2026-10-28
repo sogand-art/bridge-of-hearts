@@ -328,15 +328,20 @@ const uploadImageIfNeeded = async (img: string | null) => {
   return await compressImage(img);
 };
   // ---- Eşya ilanı ----
-  const handleCreateListing = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!itemTitle.trim() || !auth.currentUser || isSaving) return;
-    setIsSaving(true);
-    try {
-      const imageUrl = await uploadImageIfNeeded(itemImage);
-      await addDoc(collection(db, 'itemListings'), {
-        userId: auth.currentUser.uid,
+ const handleCreateListing = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!itemTitle.trim() || !auth.currentUser || isSaving) return;
+  if (!itemImage) {
+    showToast('Lütfen eşya fotoğrafını yükleyin. Fotoğraf zorunludur.');
+    return;
+  }
+  setIsSaving(true);
+  try {
+    const imageUrl = await uploadImageIfNeeded(itemImage);
+    await addDoc(collection(db, 'itemListings'), {
+      userId: auth.currentUser.uid,
         title: itemTitle.trim(),
+        donorName: (profileName.split(' ')[0] || 'Bağışçı') + ' ' + ((profileName.split(' ').slice(-1)[0] || '')[0] || '') + '.',
         category: itemCategory,
         city: selectedCity,
         district: selectedDistrict,
